@@ -12,6 +12,7 @@ By coupling the NIST-selected ML-KEM (Kyber) primitive for key encapsulation wit
   separation
 - Receiver commitment helpers and canonical commitment identifiers
 - Hashlock and HTLC-aware spend builders suitable for signatureless transfers
+- Receiver ratchet wallet primitives for immediate relock R-HTLC flows
 - View-tag generation and receiver-side filtering utilities
 
 ## Crate Layout
@@ -23,6 +24,7 @@ By coupling the NIST-selected ML-KEM (Kyber) primitive for key encapsulation wit
 | `spend`      | Serializable spend structures and constructors                     |
 | `hashing`    | Keyed BLAKE3 hashing helpers                                       |
 | `constants`  | Exported primitive sizes and shared address alias                  |
+| `wallet`     | Receiver ratchet wallet utilities for signatureless R-HTLCs        |
 
 ## Quick Start
 
@@ -82,6 +84,29 @@ let spend = Spend::create_hashlock(
     stealth_output,
     &chain_id,
 )?; // ready for serialization or gossiping
+```
+
+## Receiver-Ratcheted Wallet
+
+```rust
+use numilock::wallet::RatchetWallet;
+
+let wallet = RatchetWallet::random();
+
+// Receiver invoices a payer
+let invoice = wallet.issue_invoice();
+let payment_hash = invoice.lock_hash(); // share with payer
+
+// Later, when the invoice is claimed on-chain, reveal S and immediately ratchet
+let chain_id = [0u8; 32];
+let coin_id = [1u8; 32];
+let step = wallet.ratchet_forward(invoice.secret(), &chain_id, &coin_id, None);
+
+// Create the relock output in the same transaction
+let next_lock_hash = step.next_invoice().lock_hash();
+
+// Forward the new invoice hash to the next hop (keep the secret private)
+let forwarded_invoice = step.into_invoice();
 ```
 
 ## License
