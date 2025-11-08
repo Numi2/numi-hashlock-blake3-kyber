@@ -1,0 +1,22 @@
+[package]
+name = "numilock"
+version = "0.1.1"
+edition = "2024"
+description = "Kyber768 + BLAKE3 stealth-address and hashlock toolkit for Rust, standalone and Unchained-agnostic."
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+keywords = ["kyber", "pqcrypto", "blake3", "stealth", "htlc"]
+categories = ["cryptography", "algorithms", "data-structures"]
+
+[dependencies]
+anyhow = "1"
+blake3 = "1.5"
+serde = { version = "1.0", features = ["derive"] }
+serde-big-array = "0.5"
+pqcrypto-kyber = "0.8"
+pqcrypto-traits = "0.3.5"
+subtle = "2.5"
+zeroize = "1.7"
+
+[dev-dependencies]
+hex = "0.4"
