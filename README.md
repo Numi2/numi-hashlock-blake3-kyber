@@ -3,6 +3,8 @@
 Numilock is a  Kyber KEM + BLAKE3 hashlock toolkit for Rust. It provides deterministic one-time address derivation, receiver
 commitments, hashlock derivations, and spend constructors without any dependency on a specific node or networking stack.
 
+By coupling the NIST-selected ML-KEM (Kyber) primitive for key encapsulation with domain-separated BLAKE3 hashing, Numilock keeps both shared-secret establishment and downstream commitments post-quantum safe. The lattice-based KEM resists known quantum attacks on public-key transport, while BLAKE3’s wide-pipe construction ensures only a quadratic speedup is available to quantum adversaries. Together they preserve confidentiality, binding, and unlinkability guarantees even as quantum capabilities scale.
+
 ## Features
 
 - Kyber768 encapsulation helpers with deterministic one-time address bytes
