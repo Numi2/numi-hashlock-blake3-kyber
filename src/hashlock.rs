@@ -3,7 +3,9 @@
 use blake3::Hasher;
 
 fn lp(len: usize) -> [u8; 4] {
-    (len as u32).to_le_bytes()
+    u32::try_from(len)
+        .expect("length exceeds u32")
+        .to_le_bytes()
 }
 
 /// Compute the canonical commitment for a Kyber ciphertext.
@@ -110,6 +112,16 @@ pub fn view_tag(shared_secret: &[u8]) -> u8 {
     h.update(&lp(shared_secret.len()));
     h.update(shared_secret);
     h.finalize().as_bytes()[0]
+}
+
+/// Derive a 2-byte view tag for lower collision rates in receiver scanning.
+pub fn view_tag16(shared_secret: &[u8]) -> [u8; 2] {
+    let mut h = Hasher::new();
+    h.update(b"vt16");
+    h.update(&lp(shared_secret.len()));
+    h.update(shared_secret);
+    let out = h.finalize();
+    [out.as_bytes()[0], out.as_bytes()[1]]
 }
 
 /// Derive the next lock secret while binding an additional note for replay protection.

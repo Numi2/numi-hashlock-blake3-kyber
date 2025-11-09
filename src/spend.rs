@@ -58,7 +58,10 @@ pub struct Spend {
 }
 
 fn lp(len: usize) -> [u8; 4] {
-    (len as u32).to_le_bytes()
+    // Prevent silent truncation of large length values
+    u32::try_from(len)
+        .expect("length exceeds u32")
+        .to_le_bytes()
 }
 
 /// Compute the canonical commitment for the entire kem output.
@@ -82,6 +85,26 @@ pub fn kem_output_commitment(output: &KemOutput) -> [u8; 32] {
     *h.finalize().as_bytes()
 }
 
+fn validate_nonzero_32(label: &str, v: &[u8; 32]) -> Result<()> {
+    if v.iter().all(|&b| b == 0) {
+        return Err(anyhow!("{label} must be non-zero"));
+    }
+    Ok(())
+}
+
+fn validate_kem_output(output: &KemOutput) -> Result<()> {
+    if output.amount_le == 0 {
+        return Err(anyhow!("amount must be > 0"));
+    }
+    if output.one_time_pk.iter().all(|&b| b == 0) {
+        return Err(anyhow!("one_time_pk must be non-zero"));
+    }
+    if output.kyber_ct.iter().all(|&b| b == 0) {
+        return Err(anyhow!("kyber_ct must be non-zero"));
+    }
+    Ok(())
+}
+
 impl Spend {
     /// Construct a signatureless hashlock-based spend.
     ///
@@ -95,6 +118,12 @@ impl Spend {
         to: KemOutput,
         chain_id32: &[u8; 32],
     ) -> Result<Self> {
+        // Basic input validation
+        validate_nonzero_32("coin_id", &coin_id)?;
+        validate_nonzero_32("anchor_root", &anchor_root)?;
+        validate_nonzero_32("unlock_preimage", &unlock_preimage)?;
+        validate_kem_output(&to)?;
+
         let nullifier = nullifier_from_preimage(chain_id32, &coin_id, &unlock_preimage);
         // Commitment binds the entire kem output
         let commitment = kem_output_commitment(&to);
@@ -126,6 +155,13 @@ impl Spend {
         chain_id32: &[u8; 32],
         next_lock_hash: [u8; 32],
     ) -> Result<Self> {
+        // Basic input validation
+        validate_nonzero_32("coin_id", &coin_id)?;
+        validate_nonzero_32("anchor_root", &anchor_root)?;
+        validate_nonzero_32("unlock_preimage", &unlock_preimage)?;
+        validate_nonzero_32("next_lock_hash", &next_lock_hash)?;
+        validate_kem_output(&to)?;
+
         let nullifier = nullifier_from_preimage(chain_id32, &coin_id, &unlock_preimage);
         let commitment = kem_output_commitment(&to);
 
@@ -160,6 +196,20 @@ impl Spend {
         ch_claim: [u8; 32],
         ch_refund: [u8; 32],
     ) -> Result<Self> {
+        // Basic input validation
+        if timeout_epoch == 0 {
+            return Err(anyhow!("htlc timeout_epoch must be > 0"));
+        }
+        validate_nonzero_32("coin_id", &coin_id)?;
+        validate_nonzero_32("anchor_root", &anchor_root)?;
+        validate_nonzero_32("unlock_preimage", &unlock_preimage)?;
+        validate_nonzero_32("htlc_ch_claim", &ch_claim)?;
+        validate_nonzero_32("htlc_ch_refund", &ch_refund)?;
+        if ch_claim == ch_refund {
+            return Err(anyhow!("htlc claim and refund commitments must differ"));
+        }
+        validate_kem_output(&to)?;
+
         let nullifier = nullifier_from_preimage(chain_id32, &coin_id, &unlock_preimage);
         // Commitment binds the entire kem output
         let commitment = kem_output_commitment(&to);

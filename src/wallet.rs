@@ -13,30 +13,11 @@ use rand::rngs::OsRng;
 use zeroize::Zeroize;
 use subtle::ConstantTimeEq;
 
-use crate::constants::{DST_H, DST_INV};
-
-/// 4-byte little-endian length prefix helper.
-fn lp(len: usize) -> [u8; 4] {
-    (len as u32).to_le_bytes()
-}
-
-/// BLAKE3 derive_key helper that enforces 32-byte output.
-fn derive32(domain: &str, input: &[u8]) -> [u8; 32] {
-    blake3::derive_key(domain, input)
-}
-
-/// H(x) = BLAKE3.derive_key(DST_H, x)[:32]
-fn hash_h(input: &[u8]) -> [u8; 32] {
-    derive32(DST_H, input)
-}
+// no direct constants needed from crate::constants here
 
 /// Compute the invoice hash H(L(DST_INV) || DST_INV || S).
 fn invoice_hash_from_secret(secret: &[u8; 32]) -> [u8; 32] {
-    let mut encoded = Vec::with_capacity(4 + DST_INV.len() + secret.len());
-    encoded.extend_from_slice(&lp(DST_INV.as_bytes().len()));
-    encoded.extend_from_slice(DST_INV.as_bytes());
-    encoded.extend_from_slice(secret);
-    hash_h(&encoded)
+    crate::invoice_hash(secret)
 }
 
 /// Bind the per-claim context `(chain_id, coin_id, note_presence, note)`.
@@ -134,15 +115,19 @@ pub struct RatchetWallet {
 
 impl RatchetWallet {
     /// Instantiate a wallet with the provided 32-byte ratchet key.
-    pub fn new(ratchet_key: [u8; 32]) -> Self {
-        Self { ratchet_key }
+    pub fn new(ratchet_key: [u8; 32]) -> Result<Self> {
+        if ratchet_key.iter().all(|&b| b == 0) {
+            return Err(anyhow!("ratchet key must be non-zero"));
+        }
+        Ok(Self { ratchet_key })
     }
 
     /// Generate a wallet with a fresh random ratchet key from the OS RNG.
     pub fn random() -> Self {
         let mut key = [0u8; 32];
         OsRng.fill_bytes(&mut key);
-        Self::new(key)
+        // An all-zero key from a secure RNG is effectively impossible; treat as fatal if ever observed.
+        Self::new(key).expect("OS RNG produced an all-zero ratchet key")
     }
 
     /// Export the ratchet key for secure backup.

@@ -52,12 +52,9 @@ pub enum CovenantError {
 
 /// 4‑byte little‑endian length prefix.
 fn lp(x: usize) -> [u8; 4] {
-    (x as u32).to_le_bytes()
-}
-
-fn push_field(buf: &mut Vec<u8>, field: &[u8]) {
-    buf.extend_from_slice(&lp(field.len()));
-    buf.extend_from_slice(field);
+    u32::try_from(x)
+        .expect("length exceeds u32")
+        .to_le_bytes()
 }
 
 /// Bind context into a fixed 32‑byte value.
@@ -66,42 +63,32 @@ pub fn bind_context(chain_id: &[u8], coin_id: &[u8], note: Option<&[u8]>) -> [u8
     let note_flag = if note.is_some() { [1u8] } else { [0u8] };
     let note_bytes = note.unwrap_or(&[]);
 
-    let mut buf = Vec::with_capacity(
-        4 + chain_id.len()
-            + 4 + coin_id.len()
-            + 4 + note_flag.len()
-            + 4 + note_bytes.len(),
-    );
-    push_field(&mut buf, chain_id);
-    push_field(&mut buf, coin_id);
-    push_field(&mut buf, &note_flag);
-    push_field(&mut buf, note_bytes);
-    blake3::derive_key(DST_BIND, &buf)
+    let mut h = blake3::Hasher::new_derive_key(DST_BIND);
+    h.update(&lp(chain_id.len()));
+    h.update(chain_id);
+    h.update(&lp(coin_id.len()));
+    h.update(coin_id);
+    h.update(&lp(note_flag.len()));
+    h.update(&note_flag);
+    h.update(&lp(note_bytes.len()));
+    h.update(note_bytes);
+    *h.finalize().as_bytes()
 }
 
 /// H for invoice/lock hashing with domain separation:
 /// h = H(L(DST_INV)||DST_INV||S)
 pub fn invoice_hash(s: &[u8; 32]) -> LockHash {
-    let mut buf = Vec::with_capacity(4 + DST_INV.len() + 32);
-    buf.extend_from_slice(&lp(DST_INV.as_bytes().len()));
-    buf.extend_from_slice(DST_INV.as_bytes());
-    buf.extend_from_slice(s);
-    blake3::derive_key(DST_H, &buf)
+    let mut h = blake3::Hasher::new_derive_key(DST_H);
+    let inv = DST_INV.as_bytes();
+    h.update(&lp(inv.len()));
+    h.update(inv);
+    h.update(s);
+    *h.finalize().as_bytes()
 }
 
 /// Internal: derive a keyed PRF key from K_receiver.
 fn prf_key(k_receiver: &[u8; 32]) -> [u8; 32] {
     blake3::derive_key(DST_PRF, k_receiver)
-}
-
-/// PRF(K, input) → 32 bytes using BLAKE3 keyed mode with a derived key.
-fn prf(k_receiver: &[u8; 32], input: &[u8]) -> [u8; 32] {
-    let k = prf_key(k_receiver);
-    let mut h = blake3::Hasher::new_keyed(&k);
-    h.update(input);
-    let mut out = [0u8; 32];
-    out.copy_from_slice(h.finalize().as_bytes());
-    out
 }
 
 /// Derive the receiver‑only next secret S⁺ from K_receiver and revealed S.
@@ -114,11 +101,14 @@ pub fn derive_next_secret(
     note: Option<&[u8]>,
 ) -> [u8; 32] {
     let bind = bind_context(chain_id, coin_id, note);
-    let mut input = Vec::with_capacity(4 + 32 + 32);
-    input.extend_from_slice(&lp(s.len()));
-    input.extend_from_slice(s);
-    input.extend_from_slice(&bind);
-    prf(k_receiver, &input)
+    let k = prf_key(k_receiver);
+    let mut h = blake3::Hasher::new_keyed(&k);
+    h.update(&lp(s.len()));
+    h.update(s);
+    h.update(&bind);
+    let mut out = [0u8; 32];
+    out.copy_from_slice(h.finalize().as_bytes());
+    out
 }
 
 /// Compute the next lock hash h⁺ = H(L(DST_INV)||DST_INV||S⁺).

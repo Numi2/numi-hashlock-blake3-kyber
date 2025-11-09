@@ -9,7 +9,9 @@ use crate::constants::{KYBER768_CT_BYTES, KYBER768_PK_BYTES};
 use crate::hashlock::view_tag;
 
 fn lp(len: usize) -> [u8; 4] {
-    (len as u32).to_le_bytes()
+    u32::try_from(len)
+        .expect("length exceeds u32")
+        .to_le_bytes()
 }
 
 /// Encapsulate a shared secret for a receiver using their Kyber768 public key.
@@ -21,7 +23,7 @@ pub fn encapsulate_for_receiver(
     receiver_pk: &[u8; KYBER768_PK_BYTES],
 ) -> Result<(Zeroizing<Vec<u8>>, [u8; KYBER768_CT_BYTES])> {
     let pk = PublicKey::from_bytes(receiver_pk)
-        .map_err(|e| anyhow!("Invalid Kyber768 public key: {:?}", e))?;
+        .map_err(|_| anyhow!("invalid Kyber768 public key"))?;
 
     let (shared_secret, ciphertext) = encapsulate(&pk);
 
@@ -37,9 +39,9 @@ pub fn decapsulate_for_receiver(
     kyber_ct: &[u8; KYBER768_CT_BYTES],
 ) -> Result<Zeroizing<Vec<u8>>> {
     let sk = SecretKey::from_bytes(receiver_sk)
-        .map_err(|e| anyhow!("Invalid Kyber768 secret key: {:?}", e))?;
+        .map_err(|_| anyhow!("invalid Kyber768 secret key"))?;
     let ct = Ciphertext::from_bytes(kyber_ct)
-        .map_err(|e| anyhow!("Invalid Kyber768 ciphertext: {:?}", e))?;
+        .map_err(|_| anyhow!("invalid Kyber768 ciphertext"))?;
     let shared = decapsulate(&ct, &sk);
     Ok(Zeroizing::new(shared.as_bytes().to_vec()))
 }
@@ -51,6 +53,16 @@ pub fn recover_shared_and_view_tag(
 ) -> Result<(Zeroizing<Vec<u8>>, u8)> {
     let shared = decapsulate_for_receiver(receiver_sk, kyber_ct)?;
     let vt = view_tag(shared.as_slice());
+    Ok((shared, vt))
+}
+
+/// Recover the shared secret and its 2-byte view tag from a ciphertext using the receiver's SK.
+pub fn recover_shared_and_view_tag16(
+    receiver_sk: &[u8; crate::constants::KYBER768_SK_BYTES],
+    kyber_ct: &[u8; KYBER768_CT_BYTES],
+) -> Result<(Zeroizing<Vec<u8>>, [u8; 2])> {
+    let shared = decapsulate_for_receiver(receiver_sk, kyber_ct)?;
+    let vt = crate::hashlock::view_tag16(shared.as_slice());
     Ok((shared, vt))
 }
 

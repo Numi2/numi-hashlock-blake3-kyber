@@ -1,11 +1,8 @@
-# Numilock (under development)
+# Numilock 
 
-Numilock is a Kyber KEM + BLAKE3 hashlock lib for Rust.
+Numilock is a Kyber KEM + BLAKE3 hashlock system for Rust.
 
- Numilock uses lattice-based cryptography (Kyber/ML-KEM-768) while BLAKE3’s wide-pipe construction ensures only a quadratic speedup is available to quantum adversaries. Together they preserve confidentiality, binding, and unlinkability guarantees even as quantum capabilities scale.
-
-
-## Core Concepts Explained
+ Numilock uses lattice-based cryptography (Kyber/ML-KEM-768) and BLAKE3’s wide-pipe construction ensures only a quadratic speedup is available to quantum adversaries. Together they preserve security guarantees even as quantum capabilities scale.
 
 ### 1. One Basic Problem: Private Payments
 
@@ -81,6 +78,8 @@ Kyber key encapsulation and one-time address derivation.
 - `encapsulate_for_receiver()`: Generate shared secret for receiver's public key
 - `decapsulate_for_receiver()`: Receiver recovers shared secret with private key
 - `derive_one_time_pk()`: Deterministic one-time address from shared secret
+- `recover_shared_and_view_tag()`: Recover shared secret and 1-byte view tag
+- `recover_shared_and_view_tag16()`: Recover shared secret and 2-byte view tag (lower collision rate)
 - `view_tag()`: 1-byte filter to quickly check "is this payment for me?"
 
 #### `hashlock`
@@ -90,7 +89,8 @@ All hash-based lock and commitment derivations.
 - `nullifier_from_preimage()`: Hash preimage to nullifier (prevents double-spends)
 - `commitment_hash_from_preimage()`: Hash for HTLC paths
 - `htlc_lock_hash()`: Composite lock with timeout and claim/refund paths
-- `view_tag()`: Quick filter for receiver scanning
+- `view_tag()`: Quick filter for receiver scanning (1 byte)
+- `view_tag16()`: Optional 2-byte filter for lower collision rates
 - `derive_next_lock_secret()`: Derive next lock in chain
 - `commitment_id()`: Unique identifier for receiver commitments
 - `build_receiver_commitment()`: Full commitment binding all payment details
@@ -144,7 +144,7 @@ let kem_output = KemOutput {
     one_time_pk,
     kyber_ct: kyber_ciphertext,
     amount_le: amount,
-    view_tag: Some(view_tag(shared_secret.as_slice())), // For quick scanning
+    view_tag: Some(view_tag(shared_secret.as_slice())), // For quick scanning (or use view_tag16 for 2 bytes)
 };
 
 // Step 4: Alice creates the unlock preimage (proves she can spend)
@@ -233,3 +233,16 @@ All cryptographic derivations are deterministic. Given the same inputs, you will
 | `zeroize` | Clear secrets from memory | Latest |
 | `subtle` | Constant-time comparisons | Latest |
 | `anyhow` | Error handling | Latest |
+
+## Security hardening and recent fixes
+
+- Critical/High
+  - Missing input validation in spend constructors: Fixed. Constructors now reject zero amounts, all-zero keys, and invalid HTLC params.
+  - Information leakage in KEM error messages: Fixed. Errors are sanitized and avoid leaking internal details.
+  - View tag collisions with 1-byte tag: Mitigated. Added `view_tag16()` and `recover_shared_and_view_tag16()`. The 1-byte tag remains for backward compatibility.
+  - Weak key validation (all-zero ratchet keys): Fixed. `RatchetWallet::new` now returns `Result` and rejects all-zero keys; `random()` enforces this invariant.
+
+- Medium
+  - Integer truncation in length-prefixing: Fixed. All `lp()` helpers now use checked `u32` conversion to prevent silent truncation.
+  - Performance (unnecessary Vec allocations): Improved. Switched to streaming BLAKE3 for domain-separated hashes on hot paths.
+  - Inconsistent domain separation patterns: Partially addressed. Streaming derive-key is standardized in new/updated code; full alignment across all domains is scheduled for a future revision to preserve backward compatibility.
