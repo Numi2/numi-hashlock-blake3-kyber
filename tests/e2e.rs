@@ -1,8 +1,8 @@
 use numilock::{
     constants::KYBER768_PK_BYTES,
-    hashlock::{compute_preimage_v1, view_tag},
-    spend::{Spend, StealthOutput},
-    stealth::{decapsulate_for_receiver, derive_one_time_pk, encapsulate_for_receiver},
+    hashlock::{compute_preimage, view_tag},
+    kem::{decapsulate_for_receiver, derive_one_time_pk, encapsulate_for_receiver},
+    spend::{Spend, KemOutput},
 };
 use pqcrypto_kyber::kyber768::keypair;
 use pqcrypto_traits::kem::{PublicKey, SecretKey};
@@ -44,13 +44,13 @@ fn build_spend_and_verify_nullifier() {
     let one_time_pk = derive_one_time_pk(shared.as_slice(), &kyber_ct, &coin_id, &chain_id);
     let vt = view_tag(shared.as_slice());
 
-    let to = StealthOutput {
+    let to = KemOutput {
         one_time_pk,
         kyber_ct,
         amount_le: amount,
         view_tag: Some(vt),
     };
-    let unlock_preimage = compute_preimage_v1(&chain_id, &coin_id, amount, shared.as_slice(), note);
+    let unlock_preimage = compute_preimage(&chain_id, &coin_id, amount, shared.as_slice(), note);
     let spend = Spend::create_hashlock(coin_id, anchor_root, proof, unlock_preimage, to, &chain_id)
         .expect("create spend");
 

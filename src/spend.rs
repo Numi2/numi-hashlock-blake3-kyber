@@ -11,9 +11,9 @@ use crate::hashlock::{
     commitment_hash_from_preimage, htlc_lock_hash, lock_hash_from_preimage, nullifier_from_preimage,
 };
 
-/// Stealth output describing the recipient of a spend.
+/// Kem output describing the recipient of a spend.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct StealthOutput {
+pub struct KemOutput {
     /// One-time public key bytes for the receiver.
     pub one_time_pk: [u8; OTP_PK_BYTES],
     /// Kyber768 ciphertext encapsulating the shared secret.
@@ -25,8 +25,8 @@ pub struct StealthOutput {
     pub view_tag: Option<u8>,
 }
 
-/// Spend record referencing an existing coin and authorizing its transfer to a stealth output.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// Spend record referencing an existing coin and authorizing its transfer to a kem output.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Spend {
     /// The spent coin identifier.
     pub coin_id: [u8; 32],
@@ -34,12 +34,12 @@ pub struct Spend {
     pub root: [u8; 32],
     /// Inclusion proof path for the coin's membership.
     pub proof: Vec<([u8; 32], bool)>,
-    /// Commitment to the stealth output (BLAKE3 hash of all stealth output fields).
+    /// Commitment to the kem output (BLAKE3 hash of all kem output fields).
     pub commitment: [u8; 32],
     /// Nullifier derived from the unlock preimage.
     pub nullifier: [u8; 32],
-    /// Stealth output describing the next recipient.
-    pub to: StealthOutput,
+    /// Kem output describing the next recipient.
+    pub to: KemOutput,
     /// Hashlock unlock preimage revealed by this spend.
     #[serde(default)]
     pub unlock_preimage: Option<[u8; 32]>,
@@ -61,10 +61,10 @@ fn lp(len: usize) -> [u8; 4] {
     (len as u32).to_le_bytes()
 }
 
-/// Compute the canonical commitment for the entire stealth output.
-pub fn stealth_output_commitment(output: &StealthOutput) -> [u8; 32] {
+/// Compute the canonical commitment for the entire kem output.
+pub fn kem_output_commitment(output: &KemOutput) -> [u8; 32] {
     let mut h = Hasher::new();
-    h.update(b"numilock.commitment.stealth_output.v1");
+    h.update(b"numilock.commitment.kem_output");
     h.update(&lp(output.one_time_pk.len()));
     h.update(&output.one_time_pk);
     h.update(&lp(output.kyber_ct.len()));
@@ -85,19 +85,19 @@ pub fn stealth_output_commitment(output: &StealthOutput) -> [u8; 32] {
 impl Spend {
     /// Construct a signatureless hashlock-based spend.
     ///
-    /// The `to` parameter must contain a valid `StealthOutput` with a real Kyber ciphertext.
-    /// The commitment is computed as the BLAKE3 hash of the full stealth output fields.
+    /// The `to` parameter must contain a valid `KemOutput` with a real Kyber ciphertext.
+    /// The commitment is computed as the BLAKE3 hash of the full kem output fields.
     pub fn create_hashlock(
         coin_id: [u8; 32],
         anchor_root: [u8; 32],
         proof: Vec<([u8; 32], bool)>,
         unlock_preimage: [u8; 32],
-        to: StealthOutput,
+        to: KemOutput,
         chain_id32: &[u8; 32],
     ) -> Result<Self> {
         let nullifier = nullifier_from_preimage(chain_id32, &coin_id, &unlock_preimage);
-        // Commitment binds the entire stealth output
-        let commitment = stealth_output_commitment(&to);
+        // Commitment binds the entire kem output
+        let commitment = kem_output_commitment(&to);
 
         Ok(Spend {
             coin_id,
@@ -122,12 +122,12 @@ impl Spend {
         anchor_root: [u8; 32],
         proof: Vec<([u8; 32], bool)>,
         unlock_preimage: [u8; 32],
-        to: StealthOutput,
+        to: KemOutput,
         chain_id32: &[u8; 32],
         next_lock_hash: [u8; 32],
     ) -> Result<Self> {
         let nullifier = nullifier_from_preimage(chain_id32, &coin_id, &unlock_preimage);
-        let commitment = stealth_output_commitment(&to);
+        let commitment = kem_output_commitment(&to);
 
         Ok(Spend {
             coin_id,
@@ -146,23 +146,23 @@ impl Spend {
 
     /// Construct an HTLC-enabled hashlock spend with explicit claim and refund paths.
     ///
-    /// The `to` parameter must contain a valid `StealthOutput` with a real Kyber ciphertext.
-    /// The commitment is computed as the BLAKE3 hash of the full stealth output fields.
+    /// The `to` parameter must contain a valid `KemOutput` with a real Kyber ciphertext.
+    /// The commitment is computed as the BLAKE3 hash of the full kem output fields.
     #[allow(clippy::too_many_arguments)]
     pub fn create_htlc_hashlock(
         coin_id: [u8; 32],
         anchor_root: [u8; 32],
         proof: Vec<([u8; 32], bool)>,
         unlock_preimage: [u8; 32],
-        to: StealthOutput,
+        to: KemOutput,
         chain_id32: &[u8; 32],
         timeout_epoch: u64,
         ch_claim: [u8; 32],
         ch_refund: [u8; 32],
     ) -> Result<Self> {
         let nullifier = nullifier_from_preimage(chain_id32, &coin_id, &unlock_preimage);
-        // Commitment binds the entire stealth output
-        let commitment = stealth_output_commitment(&to);
+        // Commitment binds the entire kem output
+        let commitment = kem_output_commitment(&to);
 
         Ok(Spend {
             coin_id,
@@ -225,5 +225,23 @@ impl Drop for Spend {
         if let Some(ref mut preimage) = self.unlock_preimage {
             preimage.zeroize();
         }
+    }
+}
+
+impl core::fmt::Debug for Spend {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Spend")
+            .field("coin_id", &self.coin_id)
+            .field("root", &self.root)
+            .field("proof_len", &self.proof.len())
+            .field("commitment", &self.commitment)
+            .field("nullifier", &self.nullifier)
+            .field("to", &self.to)
+            .field("unlock_preimage", &"<redacted>")
+            .field("next_lock_hash", &self.next_lock_hash)
+            .field("htlc_timeout_epoch", &self.htlc_timeout_epoch)
+            .field("htlc_ch_claim", &self.htlc_ch_claim)
+            .field("htlc_ch_refund", &self.htlc_ch_refund)
+            .finish()
     }
 }

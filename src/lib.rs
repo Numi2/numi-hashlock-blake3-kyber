@@ -1,6 +1,7 @@
+#![forbid(unsafe_code)]
 //! Numilock: Kyber KEM + BLAKE3 hashlock toolkit.
 //!
-//! This crate extracts the stealth transfer building blocks from the Unchained
+//! This crate extracts the kem transfer building blocks from the Unchained
 //! node so they can be reused by other products.  It bundles deterministic
 //! one-time key derivation, receiver commitments, lock secret derivations and
 //! reusable spend builders in a single place.
@@ -8,25 +9,21 @@
 pub mod constants;
 pub mod hashing;
 pub mod hashlock;
+pub mod kem;
 pub mod spend;
-pub mod stealth;
 pub mod wallet;
 
 pub use constants::*;
 pub use hashing::*;
 pub use hashlock::*;
+pub use kem::*;
 pub use spend::*;
-pub use stealth::*;
 pub use wallet::*;
+
+use subtle::ConstantTimeEq;
 
 // src/lib.rs
 /// Receiver‑ratcheted, signatureless hashlocks helpers.
-
-/// Domain strings
-pub const DST_H: &str    = "numilock/hash.v2";
-pub const DST_PRF: &str  = "numilock/ratchet.prf.v1";
-pub const DST_INV: &str  = "numilock/invoice.v1";
-pub const DST_BIND: &str = "numilock/bind.v1";
 
 /// 32‑byte hashlock value H(S) or H(S⁺).
 pub type LockHash = [u8; 32];
@@ -137,12 +134,16 @@ pub fn check_covenant(
     outputs: &[TxOutput],
     witness: &SpendWitness,
 ) -> Result<(), CovenantError> {
-    // Check current lock matches invoice_hash(S)
-    if &invoice_hash(&witness.unlock_preimage) != current_lock_hash {
+    // Check current lock matches invoice_hash(S) using constant-time equality
+    let cur = invoice_hash(&witness.unlock_preimage);
+    if cur.ct_eq(current_lock_hash).unwrap_u8() == 0 {
         return Err(CovenantError::WrongCurrentLock);
     }
-    // Enforce exactly one output equals next_lock_hash
-    let count = outputs.iter().filter(|o| o.lock_hash == witness.next_lock_hash).count();
+    // Enforce exactly one output equals next_lock_hash, using constant-time equality
+    let count = outputs
+        .iter()
+        .map(|o| o.lock_hash.ct_eq(&witness.next_lock_hash).unwrap_u8() as usize)
+        .sum::<usize>();
     match count {
         1 => Ok(()),
         0 => Err(CovenantError::MissingNext),
@@ -172,7 +173,7 @@ mod tests {
         for (i, b) in k.iter_mut().enumerate() { *b = i as u8; }
 
         let mut s = [0u8; 32];
-        for (i, b) in s.iter_mut().enumerate() { *b = (0xF0u8 ^ (i as u8)); }
+        for (i, b) in s.iter_mut().enumerate() { *b = 0xF0u8 ^ (i as u8); }
 
         let chain_id = b"chain-A";
         let coin_id  = [0xABu8; 32];

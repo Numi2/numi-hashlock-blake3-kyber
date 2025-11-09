@@ -11,9 +11,9 @@ use anyhow::{Result, anyhow};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use zeroize::Zeroize;
+use subtle::ConstantTimeEq;
 
-const DST_H: &str = "numilock/hash.v2";
-const DST_INV: &str = "numilock/invoice.v1";
+use crate::constants::{DST_H, DST_INV};
 
 /// 4-byte little-endian length prefix helper.
 fn lp(len: usize) -> [u8; 4] {
@@ -203,7 +203,7 @@ impl RatchetWallet {
     /// lock hash matches the recomputed value.
     pub fn validate_invoice_hash(secret: &[u8; 32], lock_hash: &[u8; 32]) -> Result<()> {
         let expected = invoice_hash_from_secret(secret);
-        if &expected == lock_hash {
+        if expected.ct_eq(lock_hash).unwrap_u8() == 1 {
             Ok(())
         } else {
             Err(anyhow!("invoice hash mismatch"))

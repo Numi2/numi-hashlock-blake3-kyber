@@ -17,3 +17,9 @@ pub const OTP_PK_BYTES: usize = 32;
 
 /// Standard 32-byte address type derived from BLAKE3 hashes.
 pub type Address = [u8; 32];
+
+/// Domain separation constants used across the crate.
+pub const DST_H: &str    = "numilock/hash";
+pub const DST_PRF: &str  = "numilock/ratchet.prf";
+pub const DST_INV: &str  = "numilock/invoice";
+pub const DST_BIND: &str = "numilock/bind";

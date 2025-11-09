@@ -11,7 +11,7 @@ fn lp(len: usize) -> [u8; 4] {
 /// This mirrors the commitment used by `Spend` constructors, centralizing the logic.
 pub fn ciphertext_commitment(kyber_ct: &[u8]) -> [u8; 32] {
     let mut h = Hasher::new();
-    h.update(b"numilock.commitment.ciphertext.v1");
+    h.update(b"numilock.commitment.ciphertext");
     h.update(&lp(kyber_ct.len()));
     h.update(kyber_ct);
     *h.finalize().as_bytes()
@@ -122,7 +122,7 @@ pub fn derive_next_lock_secret(
     note_s: &[u8],
 ) -> [u8; 32] {
     let mut h = Hasher::new();
-    h.update(b"numilock.locksecret.v2|mlkem768");
+    h.update(b"numilock.locksecret|mlkem768");
     h.update(&lp(shared.len()));
     h.update(shared);
     h.update(&lp(kyber_ct_bytes.len()));
@@ -144,7 +144,7 @@ pub fn commitment_id(
     chain_id32: &[u8; 32],
 ) -> [u8; 32] {
     let mut h = Hasher::new();
-    h.update(b"numilock.commitment_id.v1");
+    h.update(b"numilock.commitment_id");
     h.update(one_time_pk);
     h.update(kyber_ct);
     h.update(next_lock_hash);
@@ -152,36 +152,6 @@ pub fn commitment_id(
     h.update(&amount_le.to_le_bytes());
     h.update(chain_id32);
     *h.finalize().as_bytes()
-}
-
-/// Alias for `commitment_id` with v1 suffix for API compatibility.
-pub fn commitment_id_v1(
-    one_time_pk: &[u8],
-    kyber_ct: &[u8],
-    next_lock_hash: &[u8; 32],
-    coin_id: &[u8; 32],
-    amount_le: u64,
-    chain_id32: &[u8; 32],
-) -> [u8; 32] {
-    commitment_id(
-        one_time_pk,
-        kyber_ct,
-        next_lock_hash,
-        coin_id,
-        amount_le,
-        chain_id32,
-    )
-}
-
-/// Alias for `compute_preimage` with v1 suffix for API compatibility.
-pub fn compute_preimage_v1(
-    chain_id32: &[u8; 32],
-    coin_id: &[u8; 32],
-    amount_le: u64,
-    shared_secret: &[u8],
-    note_s: &[u8],
-) -> [u8; 32] {
-    compute_preimage(chain_id32, coin_id, amount_le, shared_secret, note_s)
 }
 
 /// Build a receiver commitment from shared secret, Kyber ciphertext, and context.
@@ -198,7 +168,7 @@ pub fn build_receiver_commitment(
     note: &[u8],
 ) -> [u8; 32] {
     let mut h = Hasher::new();
-    h.update(b"numilock.receiver_commitment.v1");
+    h.update(b"numilock.receiver_commitment");
     h.update(&lp(shared.len()));
     h.update(shared);
     h.update(&lp(kyber_ct.len()));

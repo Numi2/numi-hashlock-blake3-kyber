@@ -1,9 +1,9 @@
 use numilock::{
     constants::KYBER768_PK_BYTES,
-    hashing::blake3_hash,
-    hashlock::{compute_preimage_v1, view_tag},
-    spend::{Spend, StealthOutput},
-    stealth::{decapsulate_for_receiver, derive_one_time_pk, encapsulate_for_receiver},
+    hashing::numihash,
+    hashlock::{compute_preimage, view_tag},
+    kem::{decapsulate_for_receiver, derive_one_time_pk, encapsulate_for_receiver},
+    spend::{Spend, KemOutput},
 };
 use pqcrypto_kyber::kyber768::keypair;
 use pqcrypto_traits::kem::{PublicKey, SecretKey};
@@ -31,10 +31,10 @@ fn main() -> anyhow::Result<()> {
 
     // Sender context
     let chain_id = [0u8; 32];
-    let coin_id = blake3_hash(b"example-coin");
+    let coin_id = numihash(b"example-coin");
     let amount = 42u64;
     let note = b"demo-payment";
-    let anchor_root = blake3_hash(b"anchor-root");
+    let anchor_root = numihash(b"anchor-root");
     let proof: Vec<([u8; 32], bool)> = Vec::new();
 
     // Host chain should verify the proof before accepting the spend.
@@ -55,8 +55,8 @@ fn main() -> anyhow::Result<()> {
     // Optional view tag for receiver filtering
     let vt = view_tag(shared.as_slice());
 
-    // Build stealth output
-    let to = StealthOutput {
+    // Build kem output
+    let to = KemOutput {
         one_time_pk,
         kyber_ct,
         amount_le: amount,
@@ -64,7 +64,7 @@ fn main() -> anyhow::Result<()> {
     };
 
     // Compute unlock preimage and create spend
-    let unlock_preimage = compute_preimage_v1(&chain_id, &coin_id, amount, shared.as_slice(), note);
+    let unlock_preimage = compute_preimage(&chain_id, &coin_id, amount, shared.as_slice(), note);
     let spend =
         Spend::create_hashlock(coin_id, anchor_root, proof, unlock_preimage, to, &chain_id)?;
 

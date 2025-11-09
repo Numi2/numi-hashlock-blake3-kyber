@@ -1,4 +1,4 @@
-//! Kyber KEM encapsulation helpers and stealth output utilities.
+//! Kyber KEM encapsulation helpers and kem output utilities.
 
 use anyhow::{Result, anyhow};
 use pqcrypto_kyber::kyber768::*;
@@ -67,7 +67,7 @@ pub fn derive_one_time_pk(
     use blake3::Hasher;
 
     let mut h = Hasher::new();
-    h.update(b"numilock.onetime_pk.v1");
+    h.update(b"numilock.onetime_pk");
     h.update(&lp(shared_secret.len()));
     h.update(shared_secret);
     h.update(&lp(kyber_ct.len()));

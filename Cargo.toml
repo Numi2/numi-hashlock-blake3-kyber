@@ -2,10 +2,10 @@
 name = "numilock"
 version = "0.1.1"
 edition = "2024"
-description = "Kyber768 + BLAKE3 stealth-address and hashlock toolkit for Rust, standalone and Unchained-agnostic."
+description = "Kyber768 + BLAKE3 + hashlock toolkit for Rust, standalone and Unchained-agnostic."
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-keywords = ["kyber", "pqcrypto", "blake3", "stealth", "htlc"]
+keywords = ["kyber", "pqcrypto", "blake3", "kem", "htlc"]
 categories = ["cryptography", "algorithms", "data-structures"]
 
 [dependencies]
