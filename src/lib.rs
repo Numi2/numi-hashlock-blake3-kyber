@@ -1,10 +1,15 @@
 #![forbid(unsafe_code)]
-//! Numilock: Kyber KEM + BLAKE3 hashlock toolkit.
+//! Numilock: ML-KEM-768 (Kyber) + BLAKE3 hashlock toolkit.
 //!
-//! This crate extracts the kem transfer building blocks from the Unchained
-//! node so they can be reused by other products.  It bundles deterministic
-//! one-time key derivation, receiver commitments, lock secret derivations and
-//! reusable spend builders in a single place.
+//! Post-quantum **private receiver designation** and **hashlocked redemption**:
+//! the KEM delivers a shared secret only the intended receiver recovers; domain-separated
+//! BLAKE3 derives locks and related material; hashlocks express bearer redemption authority.
+//! Intended as a building block inside larger protocols—not a full private-payments or
+//! authorization stack on its own.
+//!
+//! This crate extracts KEM transfer building blocks from the Unchained node for reuse.
+//! It bundles deterministic one-time key derivation, receiver commitments, lock secret
+//! derivations, and reusable spend builders.
 
 pub mod constants;
 pub mod hashing;

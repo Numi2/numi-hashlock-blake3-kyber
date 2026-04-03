@@ -1,51 +1,35 @@
-# Numilock 
+# Numilock
 
-Numilock is a Kyber KEM + BLAKE3 hashlock system for Rust.
+**Numilock is a Rust library for post-quantum private receiver designation and ratcheted hashlocked redemption.** It combines ML-KEM-768 (Kyber) for asymmetric delivery of a shared secret to one intended receiver, BLAKE3 for domain-separated hashing and key derivation, and hashlocks so that knowledge of a derived secret acts as redemption authority.
 
- Numilock uses lattice-based cryptography (Kyber/ML-KEM-768) and BLAKE3’s wide-pipe construction ensures only a quadratic speedup is available to quantum adversaries. Together they preserve security guarantees even as quantum capabilities scale.
+Calling it a complete “private payments” stack would overstate the scope. This crate is a **narrow but real** primitive: *how do you designate a receiver privately and non-interactively in a post-quantum way, so only that receiver can recover the redeeming secret?* NIST frames KEMs as shared-secret generators, typically used inside larger constructions (e.g. KEM/DEM), not as a drop-in replacement for all authorization or privacy machinery.
 
-### 1. One Basic Problem: Private Payments
+### What this is (first principles)
 
-When Alice wants to pay Bob:
-- **Problem A**: If Bob publishes a static address, everyone can see all payments to that address
-- **Problem B**: If Alice reveals which coin she's spending, everyone can trace her transaction history
-- **Problem C**: Quantum computers will eventually break traditional public-key cryptography
+1. **KEM (ML-KEM-768)** — Standardized post-quantum key encapsulation: 1184-byte public keys, 1088-byte ciphertexts, 32-byte shared secret. It privately delivers shared material to the holder of a given public key.
+2. **BLAKE3** — Fast general-purpose hash with keyed and derive-key modes; the BLAKE3 paper targets 128-bit security for its stated goals. Here it derives locks, tags, nullifier-like values, and follow-on secrets from that root material with strict domain separation.
+3. **Hashlock** — Whoever can show knowledge of the preimage (or a protocol-defined witness) can satisfy the lock. That is **bearer** redemption authority, not proof of long-term identity, ownership, or consent.
 
-### 2. The Solution: One-Time Addresses + Hashlocks
+Together: **post-quantum asymmetric delivery of bearer redemption secrets** — a good fit for private claim tickets, vouchers, sealed credits, and similar one-time rights when the surrounding system defines the rest.
 
-**One-Time Addresses**: Each payment goes to a unique address that only the receiver can detect.
-- Bob publishes one permanent key
-- Alice generates a unique address for this specific payment using Kyber KEM (Key Encapsulation Mechanism)
-- Only Bob can decrypt and claim the payment
-- Outside observers cannot link this payment to Bob's other payments
+### Strong fits
 
-**Hashlocks**: Lock coins with a hash. To unlock, reveal the preimage.
-- Lock = `H(secret)`
-- Unlock = reveal `secret`, prove `H(secret)` matches
-- No signatures required (signatures are expensive and traceable)
+- **Private claim tickets** — Vouchers, refund or payout claims, withdrawal tickets, one-time settlement rights: a public commitment exists, but only the intended receiver recovers the secret needed to redeem.
+- **Receiver-private delivery inside a larger protocol** — If spend authorization, covenants, or ZK ownership live elsewhere, a KEM-derived secret is a reasonable way to deliver note metadata or redemption material to the next party.
+- **Ratcheted one-use capability chains** — Forward-only redemption, staged payouts, or controlled forwarding **when** the execution environment enforces the required output templates or state transitions. This is a sequencing tool inside a defined state machine, not a full payment channel by itself.
 
-**Why This Matters**:
-- No addresses are reused (privacy)
-- No signatures to verify (faster, simpler)
-- Post-quantum secure (Kyber for key exchange, BLAKE3 for hashing)
-- Unlinkable (cannot connect payments to same receiver)
+### What this does *not* solve by itself
 
-### 3. Receiver-Ratcheted Hashlocks (R-HTLC)
+- **General money authorization** — Hashlocks prove knowledge of a secret, not durable ownership, identity of the spender, or non-repudiation. NIST’s guidance: authentication and integrity often need additional elements (e.g. signatures). If you omit signatures, you must replace those properties another way.
+- **Sender privacy, amount privacy, or graph privacy** — ML-KEM, BLAKE3, and a plain hashlock do not hide which coin is spent, the amount, or the transaction graph. That requires other commitments, proofs, anonymity sets, or shielded layers.
+- **Open mempools, naively** — A bearer secret revealed before inclusion can be raced or replayed unless the transaction format or environment binds the reveal. That is a protocol-layer concern, not a flaw in ML-KEM or BLAKE3.
+- **Cost and scanning** — Large KEM payloads (1088-byte ciphertexts, 1184-byte public keys) add weight if every output carries them. Short view tags imply false positives (e.g. 1 byte → 1/256); validation work per candidate can make scanning costly at scale.
 
-This is the advanced feature. The receiver can enforce that payments automatically forward to a new lock they control.
+### Receiver-ratcheted hashlocks (R-HTLC)
 
-**How It Works**:
-1. Receiver issues invoice with lock hash `h = H(S)`
-2. Sender creates output locked to `h`
-3. When receiver claims by revealing `S`, they also commit to next lock `h⁺ = H(S⁺)`
-4. Protocol enforces: if you reveal `S`, you must create an output with `h⁺`
-5. Only the receiver knows how to derive `S⁺` from `S` (using their private ratchet key)
+The receiver can steer a chain of locks: invoice with `h = H(S)`, sender funds `h`, on claim the receiver reveals `S` and commits to `h⁺ = H(S⁺)`, with derivation tied to a private ratchet key. Useful where the environment enforces the next-output rules; **not** a claim that this alone replaces signatures or full channel security on a public chain.
 
-**Why This Matters**:
-- Payments can be conditionally forwarded
-- Receiver maintains control over the chain of payments
-- Enables payment channels without signatures
-- Replay protection (each secret is used once)
+**Why it can matter**: conditional forwarding, receiver-controlled sequencing, one-time secrets per hop — **when** your layer binds execution correctly.
 
 ## Technical Components
 
@@ -111,7 +95,7 @@ Receiver wallet implementing the ratchet mechanism.
 - `ratchet_forward()`: Derive next secret and lock after revealing current secret
 - Automatically binds chain ID, coin ID, and optional note to prevent replay
 
-## Example: Basic Payment Flow
+## Example: Basic hashlocked output (claim-style flow)
 
 ```rust
 use numilock::{
@@ -173,7 +157,7 @@ let spend = Spend::create_hashlock(
 //         spend.to contains encrypted details only Bob can decrypt
 ```
 
-## Example: Receiver-Ratcheted Payment Channel
+## Example: Receiver-ratcheted lock chain
 
 ```rust
 use numilock::wallet::RatchetWallet;
